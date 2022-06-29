@@ -224,5 +224,5 @@ system = {
 *** System-level packages
 #+name: cognac-system-packages
 #+begin_src none
-curl inetutils vis wget zfs
+curl inetutils vis wget zfs freetype
 #+end_src
