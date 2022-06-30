@@ -47,10 +47,11 @@ inputs = {
 This is the flake output - a NixOS configuration with a home set up for dch.
 #+name: outputs
 #+begin_src nix :noweb yes
-outputs = { self, nixpkgs, ... }: {
+outputs = { self, nixpkgs, home-manager, ... }: {
   nixosConfigurations.cognac = nixpkgs.lib.nixosSystem {
     system = "x86_64-linux";
     modules = [
+      home-manager.nixosModules.home-manager { }
       <<configuration-cognac>>
     ];
   };
@@ -62,10 +63,11 @@ Cognac is my desktop machine, it's my daily driver. Love you baby <3
 #+name: configuration-cognac
 #+begin_src nix :noweb yes
 ({ config, pkgs, lib, modulesPath, ... }: {
-  <<cognac-hardware>>
-  <<cognac-network>>
-  <<cognac-general>>
-})
+       <<cognac-hardware>>
+       <<cognac-network>>
+       <<cognac-general>>
+       <<cognac-user-dch>>
+     })
 #+end_src
 
 *** Boot, filesystems and hardware
@@ -170,22 +172,16 @@ console = {
   keyMap = "uk";
 };
 
-services = {
-};
-
-users.users.dch = {
-  shell = pkgs.fish;
-  isNormalUser = true;
-  home = "/home/dch";
-  extraGroups = [ "wheel" "podman" ];
-  openssh.authorizedKeys.keys = [
-    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJjqcbQfCraYffdGObPpVVNHTqOvie4ns5TfqoADP4mx"
-  ];
-};
+services = { };
 
 environment.systemPackages = with pkgs; [
   <<cognac-system-packages>>
 ];
+
+fonts.fontconfig = {
+  hinting.autohint = true;
+  hinting.style = "hintmedium";
+};
 
 # Some programs need SUID wrappers, can be configured further or are
 # started in user sessions.
@@ -225,4 +221,52 @@ system = {
 #+name: cognac-system-packages
 #+begin_src none
 curl inetutils vis wget zfs freetype
+#+end_src
+
+
+
+** User configuration
+#+name: cognac-user-dch
+#+begin_src nix :noweb yes
+users.users.dch = {
+  shell = pkgs.fish;
+  isNormalUser = true;
+  home = "/home/dch";
+  extraGroups = [ "wheel" "podman" ];
+  openssh.authorizedKeys.keys = [
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJjqcbQfCraYffdGObPpVVNHTqOvie4ns5TfqoADP4mx"
+  ];
+};
+
+home-manager.users.dch = {
+  home.stateVersion = "22.05";
+  home.packages = with pkgs; [
+    <<user-dch-packages>>
+    <<user-dch-fonts>>
+  ];
+  fonts.fontconfig.enable = true;
+};
+#+end_src
+
+*** dch's fonts
+#+name: user-dch-fonts
+#+begin_src none
+tewi-font
+courier-prime
+mplus-outline-fonts.githubRelease
+#+end_src
+
+*** dch's packages
+#+name: user-dch-packages
+#+begin_src none
+ansible              cachix                     cmake      cmigemo
+cryptsetup           emacs-all-the-icons-fonts
+emacsPgtkNativeComp  entr                       firefox    gh
+glib                 glibc                      gnumake    home-manager     jq
+libratbag            libtool                    libvterm   moreutils
+mpv                  mullvad                    nixfmt     nq               packer  piper
+piper                python3                    ripgrep    shellcheck
+slock                srm                        terraform  tor              ttyrec
+unzip                usbutils                   vis        wireguard-tools
+xz                   cowsay                     fortune
 #+end_src
