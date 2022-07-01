@@ -297,7 +297,7 @@ curl inetutils vis wget zfs freetype git
 #+end_src
 
 
-* User configuration (dch)
+** User configuration (dch)
 #+name: user-dch
 #+begin_src nix :noweb yes
 users.users.dch = {
