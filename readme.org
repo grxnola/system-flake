@@ -63,11 +63,11 @@ Cognac is my desktop machine, it's my daily driver. Love you baby <3
 #+name: configuration-cognac
 #+begin_src nix :noweb yes
 ({ config, pkgs, lib, modulesPath, ... }: {
-       <<cognac-hardware>>
-       <<cognac-network>>
-       <<cognac-general>>
-       <<cognac-user-dch>>
-     })
+  <<cognac-hardware>>
+  <<cognac-network>>
+  <<cognac-general>>
+  <<user-dch>>
+})
 #+end_src
 
 *** Boot, filesystems and hardware
@@ -144,11 +144,89 @@ nixpkgs.overlays = [ (import self.inputs.emacs-overlay) ];
 
 services.xserver = {
   enable = true;
-  videoDrivers = [ "amdgpu" ];
-  desktopManager.xfce.enable = true;
-  displayManager.defaultSession = "xfce";
   layout = "gb";
+  videoDrivers = [ "amdgpu" ];
+  displayManager.gdm.enable = true;
+  desktopManager.gnome.enable = true;
 };
+
+systemd.tmpfiles.rules = [
+  "L+ /run/gdm/.config/monitors.xml - - - - ${pkgs.writeText "gdm-monitors.xml" ''
+<monitors version="2">
+  <configuration>
+    <logicalmonitor>
+      <x>1080</x>
+      <y>278</y>
+      <scale>1</scale>
+      <primary>yes</primary>
+      <monitor>
+        <monitorspec>
+          <connector>HDMI-1</connector>
+          <vendor>AOC</vendor>
+          <product>2460G4</product>
+          <serial>0x00000b8e</serial>
+        </monitorspec>
+        <mode>
+          <width>1920</width>
+          <height>1080</height>
+          <rate>119.982177734375</rate>
+        </mode>
+      </monitor>
+    </logicalmonitor>
+    <logicalmonitor>
+      <x>0</x>
+      <y>0</y>
+      <scale>1</scale>
+      <transform>
+        <rotation>left</rotation>
+        <flipped>no</flipped>
+      </transform>
+      <monitor>
+        <monitorspec>
+          <connector>DP-3</connector>
+          <vendor>DEL</vendor>
+          <product>DELL U2419H</product>
+          <serial>4Y4P123</serial>
+        </monitorspec>
+        <mode>
+          <width>1920</width>
+          <height>1080</height>
+          <rate>60</rate>
+        </mode>
+      </monitor>
+    </logicalmonitor>
+  </configuration>
+</monitors>
+''}"
+];
+
+environment.gnome.excludePackages = with pkgs.gnome; [
+  cheese
+  gnome-music
+  pkgs.gnome-tour
+  gnome-terminal
+  gnome-maps
+  gnome-calendar
+  gnome-online-miners
+  gnome-contacts
+  gnome-calculator
+  gnome-weather
+  pkgs.gnome-photos
+  gnome-clocks
+  pkgs.gnome-online-accounts
+  simple-scan
+
+  gedit
+  epiphany
+  geary
+  evince
+  gnome-characters
+  totem
+  tali
+  iagno
+  hitori
+  atomix
+];
 
 services.openssh = {
   enable = true;
@@ -178,11 +256,6 @@ environment.systemPackages = with pkgs; [
   <<cognac-system-packages>>
 ];
 
-fonts.fontconfig = {
-  hinting.autohint = true;
-  hinting.style = "hintmedium";
-};
-
 # Some programs need SUID wrappers, can be configured further or are
 # started in user sessions.
 programs.fish.enable = true;
@@ -211,7 +284,7 @@ system = {
   configurationRevision = nixpkgs.lib.mkIf (self ? rev) self.rev;
   stateVersion = "22.05";
   autoUpgrade = {
-    enable = true;
+    enable = false;
     allowReboot = false;
   };
 };
@@ -220,13 +293,12 @@ system = {
 *** System-level packages
 #+name: cognac-system-packages
 #+begin_src none
-curl inetutils vis wget zfs freetype
+curl inetutils vis wget zfs freetype git
 #+end_src
 
 
-
-** User configuration
-#+name: cognac-user-dch
+* User configuration (dch)
+#+name: user-dch
 #+begin_src nix :noweb yes
 users.users.dch = {
   shell = pkgs.fish;
@@ -244,6 +316,7 @@ home-manager.users.dch = {
     <<user-dch-packages>>
     <<user-dch-fonts>>
   ];
+
   fonts.fontconfig.enable = true;
 };
 #+end_src
@@ -261,7 +334,7 @@ mplus-outline-fonts.githubRelease
 #+begin_src none
 ansible              cachix                     cmake      cmigemo
 cryptsetup           emacs-all-the-icons-fonts
-emacsPgtkNativeComp  entr                       firefox    gh
+entr                       firefox    gh git
 glib                 glibc                      gnumake    home-manager     jq
 libratbag            libtool                    libvterm   moreutils
 mpv                  mullvad                    nixfmt     nq               packer  piper
@@ -269,4 +342,6 @@ piper                python3                    ripgrep    shellcheck
 slock                srm                        terraform  tor              ttyrec
 unzip                usbutils                   vis        wireguard-tools
 xz                   cowsay                     fortune
+gnome.gnome-tweaks emacsNativeComp
+zig racket glslang nodejs-18_x pandoc
 #+end_src
