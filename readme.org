@@ -62,7 +62,7 @@ outputs = { self, nixpkgs, home-manager, ... }: {
 Cognac is my desktop machine, it's my daily driver. Love you baby <3
 #+name: configuration-cognac
 #+begin_src nix :noweb yes
-({ config, pkgs, lib, modulesPath, ... }: {
+({ config, pkgs, lib, modulesPath, ... }: rec {
   <<cognac-hardware>>
   <<cognac-network>>
   <<cognac-general>>
@@ -94,6 +94,12 @@ fileSystems."/boot" = {
   fsType = "vfat";
 };
 
+fileSystems."/mnt/windows" = {
+  device = "/dev/disk/by-uuid/F22000EB2000B89D";
+  fsType = "ntfs";
+  options = [ "rw" "uid=${toString users.users.dch.uid}" ];
+};
+
 swapDevices = [{
   device = "/dev/disk/by-uuid/6dbfd189-bc54-4159-98d8-6bb0cb0e7bdf";
 }];
@@ -104,11 +110,11 @@ hardware.cpu.amd.updateMicrocode =
 boot.initrd.availableKernelModules =
   [ "ahci" "xhci_pci" "usbhid" "sd_mod" ];
 boot.initrd.kernelModules = [ ];
-boot.kernelModules = [ "kvm-amd" ];
-boot.extraModulePackages = [ ];
+boot.kernelModules = [ "kvm-amd" "i2c-dev" "ddcci_backlight" ];
+boot.extraModulePackages = [ config.boot.kernelPackages.ddcci-driver ];
 
 boot = {
-  supportedFilesystems = [ "zfs" ];
+  supportedFilesystems = [ "zfs" "ntfs" ];
   loader.grub.zfsSupport = true;
   loader.grub.efiSupport = true;
   loader.grub.device = "nodev";
@@ -146,87 +152,7 @@ services.xserver = {
   enable = true;
   layout = "gb";
   videoDrivers = [ "amdgpu" ];
-  displayManager.gdm.enable = true;
-  desktopManager.gnome.enable = true;
 };
-
-systemd.tmpfiles.rules = [
-  "L+ /run/gdm/.config/monitors.xml - - - - ${pkgs.writeText "gdm-monitors.xml" ''
-<monitors version="2">
-  <configuration>
-    <logicalmonitor>
-      <x>1080</x>
-      <y>278</y>
-      <scale>1</scale>
-      <primary>yes</primary>
-      <monitor>
-        <monitorspec>
-          <connector>HDMI-1</connector>
-          <vendor>AOC</vendor>
-          <product>2460G4</product>
-          <serial>0x00000b8e</serial>
-        </monitorspec>
-        <mode>
-          <width>1920</width>
-          <height>1080</height>
-          <rate>119.982177734375</rate>
-        </mode>
-      </monitor>
-    </logicalmonitor>
-    <logicalmonitor>
-      <x>0</x>
-      <y>0</y>
-      <scale>1</scale>
-      <transform>
-        <rotation>left</rotation>
-        <flipped>no</flipped>
-      </transform>
-      <monitor>
-        <monitorspec>
-          <connector>DP-3</connector>
-          <vendor>DEL</vendor>
-          <product>DELL U2419H</product>
-          <serial>4Y4P123</serial>
-        </monitorspec>
-        <mode>
-          <width>1920</width>
-          <height>1080</height>
-          <rate>60</rate>
-        </mode>
-      </monitor>
-    </logicalmonitor>
-  </configuration>
-</monitors>
-''}"
-];
-
-environment.gnome.excludePackages = with pkgs.gnome; [
-  cheese
-  gnome-music
-  pkgs.gnome-tour
-  gnome-terminal
-  gnome-maps
-  gnome-calendar
-  gnome-online-miners
-  gnome-contacts
-  gnome-calculator
-  gnome-weather
-  pkgs.gnome-photos
-  gnome-clocks
-  pkgs.gnome-online-accounts
-  simple-scan
-
-  gedit
-  epiphany
-  geary
-  evince
-  gnome-characters
-  totem
-  tali
-  iagno
-  hitori
-  atomix
-];
 
 services.openssh = {
   enable = true;
@@ -250,11 +176,16 @@ console = {
   keyMap = "uk";
 };
 
-services = { };
+environment.sessionVariables = rec {
+  MOZ_ENABLE_WAYLAND = "1";
+};
 
-environment.systemPackages = with pkgs; [
+environment.systemPackages = with pkgs; lib.lists.flatten [
   <<cognac-system-packages>>
+  <<user-dch-packages>>
 ];
+
+<<cognac-gnome>>
 
 # Some programs need SUID wrappers, can be configured further or are
 # started in user sessions.
@@ -279,9 +210,21 @@ nix = {
   };
 };
 
+# Virtualisation, containers etc.
+virtualisation.docker = {
+  enable = true;
+  daemon.settings = {
+    fixed-cidr-v6 = "fd00::/80";
+    ipv6 = true;
+    features = {
+      buildkit = true;
+    };
+  };
+};
+
 # System state
 system = {
-  configurationRevision = nixpkgs.lib.mkIf (self ? rev) self.rev;
+  configurationRevision = lib.mkIf (self ? rev) self.rev;
   stateVersion = "22.05";
   autoUpgrade = {
     enable = false;
@@ -294,34 +237,83 @@ system = {
 #+name: cognac-system-packages
 #+begin_src none
 curl inetutils vis wget zfs freetype git
+gnome.gnome-tweaks
 #+end_src
 
+*** Gnome desktop configuration
+All my gnome settings are in gnome_dconf.dconf on a zfs fs somewhere.
+#+name: cognac-gnome
+#+begin_src nix :noweb yes
+services.xserver = {
+  displayManager.gdm.enable = true;
+  desktopManager.gnome.enable = true;
+  desktopManager.gnome.extraGSettingsOverrides = ''
+    org.gnome.mutter.keybindings switch-monitor '["XF86Display"]'
+  '';
+};
+
+# There is such an unbelievable amount of crapware that comes with Gnome.
+environment.gnome.excludePackages = with pkgs.gnome; [
+cheese            gnome-music                 pkgs.gnome-tour    gnome-maps
+gnome-calendar    gnome-online-miners         gnome-contacts
+gnome-calculator  gnome-weather               pkgs.gnome-photos
+gnome-clocks      pkgs.gnome-online-accounts
+simple-scan       yelp                        gedit              epiphany    geary   evince
+gnome-characters  totem                       tali               iagno       hitori  atomix
+];
+#+end_src
 
 ** User configuration (dch)
+
 #+name: user-dch
 #+begin_src nix :noweb yes
 users.users.dch = {
+  uid = 1000;
   shell = pkgs.fish;
   isNormalUser = true;
   home = "/home/dch";
-  extraGroups = [ "wheel" "podman" ];
+  extraGroups = [ "wheel" "docker" "i2c" ];
   openssh.authorizedKeys.keys = [
     "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJjqcbQfCraYffdGObPpVVNHTqOvie4ns5TfqoADP4mx"
   ];
 };
 
+home-manager.useGlobalPkgs = true;
+home-manager.useUserPackages = true;
 home-manager.users.dch = {
   home.stateVersion = "22.05";
   home.packages = with pkgs; [
-    <<user-dch-packages>>
     <<user-dch-fonts>>
   ];
 
+  programs.direnv = {
+    enable = true;
+    nix-direnv.enable = true;
+  };
+
+  programs.bash.enable = true;
+
   fonts.fontconfig.enable = true;
+
+
+  xdg.userDirs = {
+    desktop = "desktop";
+    documents = "documents";
+    download = "download";
+    music = "music";
+    pictures = "pictures";
+    publicShare = "public";
+    templates = "templates";
+    videos = "videos";
+  };
 };
+
+
+
+
 #+end_src
 
-*** dch's fonts
+** dch's fonts
 #+name: user-dch-fonts
 #+begin_src none
 tewi-font
@@ -329,19 +321,25 @@ courier-prime
 mplus-outline-fonts.githubRelease
 #+end_src
 
-*** dch's packages
+** dch's packages
 #+name: user-dch-packages
 #+begin_src none
-ansible              cachix                     cmake      cmigemo
-cryptsetup           emacs-all-the-icons-fonts
-entr                       firefox    gh git
-glib                 glibc                      gnumake    home-manager     jq
-libratbag            libtool                    libvterm   moreutils
-mpv                  mullvad                    nixfmt     nq               packer  piper
-piper                python3                    ripgrep    shellcheck
-slock                srm                        terraform  tor              ttyrec
-unzip                usbutils                   vis        wireguard-tools
-xz                   cowsay                     fortune
-gnome.gnome-tweaks emacsNativeComp
-zig racket glslang nodejs-18_x pandoc
+ansible cachix cmake cmigemo cowsay cryptsetup
+emacs-all-the-icons-fonts emacsNativeComp entr firefox
+fortune gh git glib glibc glslang gnumake jq libratbag
+libtool libvterm moreutils mpv mullvad nixfmt nodejs-18_x
+nq packer pandoc racket ripgrep shellcheck srm terraform
+tor ttyrec unzip usbutils vis wireguard-tools xz zig
+fd
+
+# Python
+(python310.withPackages(ps: with ps; [ poetry black pyflakes isort pytest setuptools ]))
+
+# Lua
+(let lua5_3-dch = lua5_3.withPackages(ps: with ps; [ luarocks http fennel ]);
+in [
+  lua5_3-dch
+  (fennel.overrideAttrs(old: { buildInputs = [ lua5_3-dch ]; }))
+])
+fnlfmt
 #+end_src
